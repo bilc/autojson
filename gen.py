@@ -5,16 +5,20 @@ from string import Template
 
 import clang.cindex
 from clang.cindex import Config
+from clang.cindex import TypeKind
 from clang.cindex import CursorKind
+from clang.cindex import AccessSpecifier
 from clang.cindex import _CXString
 Config.set_compatibility_check(False)
 #Config.set_library_path("/usr/lib")
 clang.cindex.Config.set_library_path("/Library/Developer/CommandLineTools/usr/lib")
 
-func_head_tpl = Template('''
-void decode_$objtype(Value &d, $objtype &x){
+func_head_tpl = Template('''void decode_$objtype(Value &d, $objtype &x)''')
+
+simple_tpl = Template('''if($doc.HasMember("$key") && $doc["$key"].Is$typ()) {
+    $obj=$doc["$key"].Get$typ();
+}
 ''')
-simple_tpl = Template('''if($doc.HasMember("$key") && $doc["$key"].Is$typ()) $obj=$doc["$key"].Get$typ();''')
 
 array_tpl = Template('''
 if($doc.HasMember("$key") && $doc["$key"].IsArray()){
@@ -25,7 +29,7 @@ if($doc.HasMember("$key") && $doc["$key"].IsArray()){
 
 class_tpl = Template('''
 if($doc.HasMember("$key") && $doc["$key"].IsObject()){
-    decode_$typ($doc["$key"].GetObject(), $obj);
+    decode_$typ($doc["$key"], $obj);
 }
 ''')
 
@@ -55,37 +59,44 @@ def dumpnode(node, wanted, output):
     kind_str = str(node.kind)[str(node.kind).index('.')+1:]
     access = node.access_specifier
     typ = node.type
+    typ_kind = node.type.kind
     typ_str = typ.spelling
     #clas = typ.get_canonical()
     if output == False and kind == CursorKind.NAMESPACE:
         return 
     elif output == False and typ_str ==wanted and (kind == CursorKind.CLASS_DECL or kind == CursorKind.STRUCT_DECL):
-        print func_head_tpl.substitute(objtype=typ_str)
+        shoplist[wanted] = func_head_tpl.substitute(objtype=typ_str) + '{\n'
         for i in node.get_children():
             dumpnode(i, wanted, True)
-        print  '}\n'
-        shoplist[typ_str] = True
-
+        shoplist[wanted] += '}\n'
     else:
-        if output == True and kind == CursorKind.FIELD_DECL:
+        if output == True and kind == CursorKind.FIELD_DECL and access == AccessSpecifier.PUBLIC:
+            #if typ_kind == TypeKind.POINTER:
+            #    class_member = 'x->'+name
+            #else:
+            #    class_member = 'x.'+name
+            print wanted, name,' ok '
             if  has_one(typ_str, ['vector<', 'list<']):
                 if has_one(typ_str, ['int', 'uint']):
-                    print array_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
                 elif has_one(typ_str, ['float', 'double']):
-                    print array_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
                 elif has_one(typ_str, ['string']):
-                    print array_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
                 else:
-                    print array_class_tpl.substitute(doc='d', key=name, typ=typ_str, obj='x.'+name)
+                    #get inner type in <>
+                    inner_typ = re.findall(r"<(.+?)>", typ_str)
+                    shoplist[inner_typ] = ''
+                    shoplist[wanted] += array_class_tpl.substitute(doc='d', key=name, typ=inner_typ, obj='x.'+name)
             elif has_one(typ_str, ['int', 'uint']):
-                print simple_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
             elif has_one(typ_str, ['float', 'double']):
-                print simple_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
             elif has_one(typ_str, ['string']):
-                print simple_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
             else:
-                shoplist[typ_str] = False
-                print class_tpl.substitute(doc='d', key=name, typ=typ_str, obj='x.'+name )
+                shoplist[typ_str] = ''
+                shoplist[wanted] += class_tpl.substitute(doc='d', key=name, typ=typ_str, obj='x.'+name )
 
         for i in node.get_children():
             dumpnode(i, wanted, output)
@@ -104,14 +115,36 @@ def main():
     index = clang.cindex.Index.create()
     tu = index.parse(sys.argv[1], ['-x', 'c++', '-std=c++11', '-D__CODE_GENERATOR__'])
 
-    shoplist[sys.argv[2]] = False
+    shoplist[sys.argv[2]] = ''
     todo = True
     while todo:
         todo = False
         for k,v in shoplist.items():
-            if v == False:
+            if v == '':
                 todo = True
                 dumpnode(tu.cursor, k, False)
 
+    f = file('decode.cpp', 'w')
+    f.write('#include "'+sys.argv[1]+'"\n')
+    f.write('''#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+
+using namespace rapidjson;
+''')
+#generate function declaration
+    for k,v in shoplist.items():
+        f.write(func_head_tpl.substitute(objtype=k)+';\n')
+    f.write('\n')
+#generate called function 
+    f.write('void decode(const char *json, ' +sys.argv[2]+ ' &x) {\n' +
+'Document d;\nd.Parse(json);\n' +
+'decode_'+sys.argv[2]+'(d,x);\n' +
+'}\n\n'
+)
+#generate function implementation
+    for k,v in shoplist.items():
+        f.write(v)
+    f.close()
 if __name__ == '__main__':
     main()
