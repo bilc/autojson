@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #coding=utf-8
 import sys
+import re
 from string import Template
 
 import clang.cindex
@@ -13,7 +14,7 @@ Config.set_compatibility_check(False)
 #Config.set_library_path("/usr/lib")
 clang.cindex.Config.set_library_path("/Library/Developer/CommandLineTools/usr/lib")
 
-func_head_tpl = Template('''void decode_$objtype(Value &d, $objtype &x)''')
+func_head_tpl = Template('''void decode_$objtype(const Value &d, $objtype &x)''')
 
 simple_tpl = Template('''if($doc.HasMember("$key") && $doc["$key"].Is$typ()) {
     $obj=$doc["$key"].Get$typ();
@@ -28,7 +29,7 @@ if($doc.HasMember("$key") && $doc["$key"].IsArray()){
 }''')
 
 class_tpl = Template('''
-if($doc.HasMember("$key") && $doc["$key"].IsObject()){
+if($doc.HasMember("$key") && $doc.IsObject()){
     decode_$typ($doc["$key"], $obj);
 }
 ''')
@@ -38,7 +39,17 @@ if($doc.HasMember("$key") && $doc["$key"].IsArray()){
     const Value& a = d["$key"];
     for (SizeType i = 0; i < a.Size(); i++) {
         $typ tmp;
-        decode_$typ($doc["$key"].GetObject(), tmp);
+        decode_$typ(a[i], tmp);
+        $obj.push_back(tmp);
+    }
+}''')
+
+array_class_pointer_tpl = Template('''
+if($doc.HasMember("$key") && $doc["$key"].IsArray()){
+    const Value& a = d["$key"];
+    for (SizeType i = 0; i < a.Size(); i++) {
+        $typ *tmp = new $typ();
+        decode_$typ(a[i], *tmp);
         $obj.push_back(tmp);
     }
 }''')
@@ -60,7 +71,10 @@ def dumpnode(node, wanted, output):
     access = node.access_specifier
     typ = node.type
     typ_kind = node.type.kind
-    typ_str = typ.spelling
+    if typ_kind == TypeKind.POINTER:
+        typ_str = typ.get_pointee().spelling
+    else :
+        typ_str = typ.spelling
     #clas = typ.get_canonical()
     if output == False and kind == CursorKind.NAMESPACE:
         return 
@@ -70,33 +84,37 @@ def dumpnode(node, wanted, output):
             dumpnode(i, wanted, True)
         shoplist[wanted] += '}\n'
     else:
-        if output == True and kind == CursorKind.FIELD_DECL and access == AccessSpecifier.PUBLIC:
-            #if typ_kind == TypeKind.POINTER:
-            #    class_member = 'x->'+name
-            #else:
-            #    class_member = 'x.'+name
-            print wanted, name,' ok '
+        if output == True and kind == CursorKind.FIELD_DECL and access == AccessSpecifier.PUBLIC and typ.is_const_qualified()== False:
+            if typ_kind == TypeKind.POINTER:
+                class_member = '*(x.'+name+')'
+            else:
+                class_member = 'x.'+name
+            print 'member:', wanted, name,'real_type:', typ_str,' ok ', class_member
             if  has_one(typ_str, ['vector<', 'list<']):
+                #get inner type in <>
+                inner_typ = re.findall(r"< *(.+?) *>", typ_str)[0]
                 if has_one(typ_str, ['int', 'uint']):
-                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
                 elif has_one(typ_str, ['float', 'double']):
-                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
                 elif has_one(typ_str, ['string']):
-                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
+                    shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='String', obj=class_member)
                 else:
-                    #get inner type in <>
-                    inner_typ = re.findall(r"<(.+?)>", typ_str)
+                    if inner_typ.find('*') != -1 :
+                        inner_typ = re.findall(r'([^ ]{1,})', inner_typ)[0]
+                        shoplist[wanted] += array_class_pointer_tpl.substitute(doc='d', key=name, typ=inner_typ, obj=class_member)
+                    else:
+                        shoplist[wanted] += array_class_tpl.substitute(doc='d', key=name, typ=inner_typ, obj=class_member)
                     shoplist[inner_typ] = ''
-                    shoplist[wanted] += array_class_tpl.substitute(doc='d', key=name, typ=inner_typ, obj='x.'+name)
             elif has_one(typ_str, ['int', 'uint']):
-                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Int64', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
             elif has_one(typ_str, ['float', 'double']):
-                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Double', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
             elif has_one(typ_str, ['string']):
-                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='String', obj='x.'+name)
+                shoplist[wanted] += simple_tpl.substitute(doc='d',key=name, typ='String', obj=class_member)
             else:
                 shoplist[typ_str] = ''
-                shoplist[wanted] += class_tpl.substitute(doc='d', key=name, typ=typ_str, obj='x.'+name )
+                shoplist[wanted] += class_tpl.substitute(doc='d', key=name, typ=typ_str, obj=class_member)
 
         for i in node.get_children():
             dumpnode(i, wanted, output)
@@ -145,6 +163,7 @@ using namespace rapidjson;
 #generate function implementation
     for k,v in shoplist.items():
         f.write(v)
+        f.write('\n')
     f.close()
 if __name__ == '__main__':
     main()
