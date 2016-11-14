@@ -54,6 +54,35 @@ if($doc.HasMember("$key") && $doc["$key"].IsArray()){
     }
 }''')
 
+map_tpl = Template('''
+if($doc.HasMember("$key") && $doc.IsObject()){
+    const Value& a = d["$key"];
+    for(Value::ConstMemberIterator i = a.MemberBegin(); i!=a.MemberEnd(); i++){
+        $obj[i->name.GetString()] = i->value.Get$typ();
+    }
+}
+''')
+map_class_tpl = Template('''
+if($doc.HasMember("$key") && $doc.IsObject()){
+    const Value& a = d["$key"];
+    for(Value::ConstMemberIterator i = a.MemberBegin(); i!=a.MemberEnd(); i++){
+        $typ tmp;
+        decode_$typ(i->value, tmp);
+        $obj[i->name.GetString()] = tmp;
+    }
+}
+''')
+map_class_pointer_tpl = Template('''
+if($doc.HasMember("$key") && $doc.IsObject()){
+    const Value& a = d["$key"];
+    for(Value::ConstMemberIterator i = a.MemberBegin(); i!=a.MemberEnd(); i++){
+        $typ *tmp = new $typ();
+        decode_$typ(i->value, *tmp);
+        $obj[i->name.GetString()] = tmp;
+    }
+}
+''')
+
 
 global shoplist
 shoplist = {}
@@ -89,8 +118,29 @@ def dumpnode(node, wanted, output):
                 class_member = '*(x.'+name+')'
             else:
                 class_member = 'x.'+name
-            print 'member:', wanted, name,'real_type:', typ_str,' ok ', class_member
-            if  has_one(typ_str, ['vector<', 'list<']):
+            #print 'member:', wanted, name,'real_type:', typ_str,' ok ', class_member
+            if has_one(typ_str, ['map<']):
+                inner_typ1 = re.findall(r"map< *(.+?),", typ_str)[0]
+                inner_typ2 = re.findall(r", *(.+?) *>", typ_str)[0]
+                if inner_typ1 != 'string' and inner_typ1 != 'std::string':
+                    print '%s.%s cannot work: key must be string'%(wanted,name)
+                    return
+                print "|%s|%s|"%(inner_typ1, inner_typ2)
+                if has_one(inner_typ2, ['int', 'uint']):
+                    shoplist[wanted] += map_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
+                elif has_one(inner_typ2, ['float', 'double']):
+                    shoplist[wanted] += map_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
+                elif has_one(inner_typ2, ['string']):
+                    shoplist[wanted] += map_tpl.substitute(doc='d',key=name, typ='String', obj=class_member)
+                else:
+                    if inner_typ2.find('*') != -1 :
+                        inner_typ2 = re.findall(r'([^ ]{1,})', inner_typ2)[0]
+                        shoplist[wanted] += map_class_pointer_tpl.substitute(doc='d', key=name, typ=inner_typ2, obj=class_member)
+                    else:
+                        shoplist[wanted] += map_class_tpl.substitute(doc='d', key=name, typ=inner_typ2, obj=class_member)
+                    shoplist[inner_typ2] = ''
+                
+            elif  has_one(typ_str, ['vector<', 'list<']):
                 #get inner type in <>
                 inner_typ = re.findall(r"< *(.+?) *>", typ_str)[0]
                 if has_one(typ_str, ['int', 'uint']):
