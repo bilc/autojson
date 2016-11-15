@@ -125,8 +125,7 @@ def dumpnode(node, wanted, output):
                 if inner_typ1 != 'string' and inner_typ1 != 'std::string':
                     print '%s.%s cannot work: key must be string'%(wanted,name)
                     return
-                print "|%s|%s|"%(inner_typ1, inner_typ2)
-                if has_one(inner_typ2, ['int', 'uint']):
+                if has_one(inner_typ2, ['int', 'uint', 'char']):
                     shoplist[wanted] += map_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
                 elif has_one(inner_typ2, ['float', 'double']):
                     shoplist[wanted] += map_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
@@ -143,7 +142,7 @@ def dumpnode(node, wanted, output):
             elif  has_one(typ_str, ['vector<', 'list<']):
                 #get inner type in <>
                 inner_typ = re.findall(r"< *(.+?) *>", typ_str)[0]
-                if has_one(typ_str, ['int', 'uint']):
+                if has_one(typ_str, ['int', 'uint', 'char']):
                     shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
                 elif has_one(typ_str, ['float', 'double']):
                     shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
@@ -200,17 +199,17 @@ def main():
 
 using namespace rapidjson;
 ''')
-#generate function declaration
+    #generate function declaration
     for k,v in shoplist.items():
         f.write(func_head_tpl.substitute(objtype=k)+';\n')
     f.write('\n')
-#generate called function 
+    #generate called function 
     f.write('void decode(const char *json, ' +sys.argv[2]+ ' &x) {\n' +
 'Document d;\nd.Parse(json);\n' +
 'decode_'+sys.argv[2]+'(d,x);\n' +
 '}\n\n'
 )
-#generate function implementation
+    #generate function implementation
     for k,v in shoplist.items():
         f.write(v)
         f.write('\n')
