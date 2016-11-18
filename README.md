@@ -1,13 +1,17 @@
 Introduction  
 ---
-Autojson is a tool generating rapidjson code for converting between cpp class and json.   
-It is written by python.  
--platforms: mac and linux.  
+Autojson can generate cpp code for converting between cpp class and json. Its result code is based on rapidjson.   
+-dev language: python  
+-platforms: mac and linux  
 -json character: utf8  
+-depend libclang and rapidjson
 
 Install  
 ---
+generate tool need:   
 pip install clang  
+
+generated code need:   
 install https://github.com/miloyip/rapidjson    
 
 Incompatible Grammar  
