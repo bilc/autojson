@@ -40,8 +40,8 @@ simple_tpl = Template('''v.AddMember("$key", Value($obj).Move(), allocat);
 ''')
 string_tpl = Template('''v.AddMember("$key", Value($obj.c_str(), $obj.size()).Move(), allocat);  
 ''')
-class_tpl = Template('''
-{
+
+class_tpl = Template('''{
 Value tmp(kObjectType);
 encode_$typ($obj, tmp, allocat);
 v.AddMember("$key", tmp, allocat);
@@ -169,10 +169,11 @@ def dumpfield(node, wanted):
     typ_kind = node.type.kind
     typ_str = node.type.spelling
     class_member = 'x.'+name
-    if typ_kind == TypeKind.POINTER:
+    if node.type.kind == TypeKind.POINTER:
         point_typ = typ.get_pointee()
         typ_kind = point_typ.kind
         typ_str = point_typ.spelling
+        shoplist[wanted] += 'if(x.'+name+'){\n'
         class_member = '(*(x.'+name+'))'
 
     if is_int(typ_kind) or is_uint(typ_kind) or is_double(typ_kind):#basic type
@@ -205,7 +206,6 @@ def dumpfield(node, wanted):
                 shoplist[wanted] += array_class_tpl.substitute(key=name, typ=typ_str, obj=class_member, derefer=derefe,intyp=arg_typ[0].spelling)
             else:
                 print '%s.%s not support. line %s'% (wanted, name,sys._getframe().f_lineno)
-                return
         #deal map
         elif template == 'map':
             derefe = ''
@@ -213,7 +213,6 @@ def dumpfield(node, wanted):
                 derefe = '*'
             if arg_typ[0].spelling != 'string' and arg_typ[0].spelling != 'std::string':
                 print '%s.%s not support. line %s'% (wanted, name, sys._getframe().f_lineno) 
-                return
             if is_int(arg_typ[1]) or is_uint(arg_typ[1]) or is_double(arg_typ[1]):
                 shoplist[wanted] += map_tpl.substitute(key=name, typ=typ_str, obj=class_member, derefer=derefe)
             elif arg_typ[1].spelling == 'string':
@@ -223,16 +222,18 @@ def dumpfield(node, wanted):
                 shoplist[wanted] += map_class_tpl.substitute(key=name, typ=typ_str, intyp=arg_typ[1].spelling, obj=class_member, derefer=derefe )
             else:
                 print '%s.%s not support. line %s'% (wanted, name, sys._getframe().f_lineno)
-                return
         else :
             print '%s.%s not support[type:%s, kind:%s]. line %s'% (wanted, name, typ_str, typ_kind, sys._getframe().f_lineno)
         
     else:
         print '%s.%s[type:%s, kind:%s] not support. line %s'% (wanted, name, typ_str, typ_kind, sys._getframe().f_lineno)
+    
+    if node.type.kind == TypeKind.POINTER:
+        shoplist[wanted] += '}\n'
 
 def check_argv():
     if len(sys.argv) != 3:
-        print("Usage: gen.py [file name] [class name]")
+        print("Usage: encode.py [file name] [class name]")
         sys.exit()
 
 def main():
@@ -241,19 +242,20 @@ def main():
     tu = index.parse(sys.argv[1], ['-x', 'c++', '-std=c++11', '-D__CODE_GENERATOR__'])
 
     shoplist[sys.argv[2]] = ''
-    todo = True
-    while todo:
-        todo = False
+    goon = True
+    while goon:
+        goon = False
         for k,v in shoplist.items():
             if v == '':
-                todo = True
+                goon = True
                 dumpnode(tu.cursor, k)
-    os.mkdir("gen")
-    f_h = file('gen/encode_%s.h'%sys.argv[2], 'w')
+    #if os.path.exists('gen') == False:
+    #    os.mkdir('gen')
+    f_h = file('encode_%s.h'%sys.argv[2], 'w')
     f_h.write('#include "%s"\n#include <string>\nvoid encode(%s &x, std::string &s);'%(sys.argv[1], sys.argv[2]))
     f_h.close()
 
-    f = file('gen/encode_%s.cpp'%sys.argv[2], 'w')
+    f = file('encode_%s.cpp'%sys.argv[2], 'w')
     f.write(outer_include_tpl.substitute(userfile=sys.argv[1]))
     #generate function declaration
     for k,v in shoplist.items():
