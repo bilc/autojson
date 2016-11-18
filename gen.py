@@ -142,11 +142,11 @@ def dumpnode(node, wanted, output):
             elif  has_one(typ_str, ['vector<', 'list<']):
                 #get inner type in <>
                 inner_typ = re.findall(r"< *(.+?) *>", typ_str)[0]
-                if has_one(typ_str, ['int', 'uint', 'char']):
+                if has_one(inner_typ, ['int', 'uint', 'char']):
                     shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Int64', obj=class_member)
-                elif has_one(typ_str, ['float', 'double']):
+                elif has_one(inner_typ, ['float', 'double']):
                     shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='Double', obj=class_member)
-                elif has_one(typ_str, ['string']):
+                elif has_one(inner_typ, ['string']):
                     shoplist[wanted] += array_tpl.substitute(doc='d',key=name, typ='String', obj=class_member)
                 else:
                     if inner_typ.find('*') != -1 :
