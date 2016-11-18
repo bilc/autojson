@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #coding=utf-8
 import sys
+import os
 import re
 from string import Template
 
@@ -107,7 +108,7 @@ Value tmp(kObjectType);
 for ($typ::iterator i = $obj.begin(); i!=$obj.end(); i++){
     Value tmp1(kObjectType);
     encode_$intyp($derefer (i->second), tmp1, allocat);
-    tmp.AddMember(i->first.c_str(), tmp1, allocat);
+    tmp.AddMember(Value(i->first.c_str(), i->first.size()).Move(), tmp1, allocat);
 }
 v.AddMember("$key", tmp, allocat);
 }
@@ -247,7 +248,12 @@ def main():
             if v == '':
                 todo = True
                 dumpnode(tu.cursor, k)
-    f = file('encode.cpp', 'w')
+    os.mkdir("gen")
+    f_h = file('gen/encode_%s.h'%sys.argv[2], 'w')
+    f_h.write('#include "%s"\n#include <string>\nvoid encode(%s &x, std::string &s);'%(sys.argv[1], sys.argv[2]))
+    f_h.close()
+
+    f = file('gen/encode_%s.cpp'%sys.argv[2], 'w')
     f.write(outer_include_tpl.substitute(userfile=sys.argv[1]))
     #generate function declaration
     for k,v in shoplist.items():
