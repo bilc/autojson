@@ -16,7 +16,7 @@ install https://github.com/miloyip/rapidjson
 
 Incompatible Grammar  
 ---
--container embed container, like vector<list<T>>  
+-container embed container, like vector< list< T>>  
 -except list,vector and map, the other containers     
 -user-defined template  
 -user-defined class without default constructor  
