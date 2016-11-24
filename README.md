@@ -17,7 +17,7 @@ install https://github.com/miloyip/rapidjson
 Support Grammar  
 ---
 -T i; T * i; T can be basic data type(int,uint,long,float,double...), string, and user-defined class.  
--Container<T> i; Container<T*> i; Container * i; Container can be list, vector.  
+-Container< T> i; Container< T*> i; Container< T> * i; Container can be list, vector.  
 -Map< string, T> i; Map< string, T*> i; Map< string, T> * i;  
 
 Incompatible Grammar  
