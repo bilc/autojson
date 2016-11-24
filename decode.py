@@ -149,6 +149,8 @@ def dumpnode(node, wanted):
         for i in node.get_children():
             dumpfield(i, wanted)
         shoplist[wanted] += '}\n'
+    elif typ_str == 'std' and kind == CursorKind.NAMESPACE:
+        return
     else:
         for i in node.get_children():
             dumpnode(i, wanted)

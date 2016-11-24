@@ -144,21 +144,23 @@ def is_double(k):
     k == TypeKind.DOUBLE or \
     k == TypeKind.LONGDOUBLE:
         return True
-
-def dumpnode(node, wanted):
+def dumpnode(node, wanted, indent):
     name = node.spelling or node.displayname
     kind = node.kind
     typ = node.type
     typ_str = typ.spelling
+    print '$'*indent,name,kind,typ_str
 
     if typ_str==wanted and (kind == CursorKind.CLASS_DECL or kind == CursorKind.STRUCT_DECL):
         shoplist[wanted] = func_def_tpl.substitute(objtype=typ_str) + '{\n'
         for i in node.get_children():
             dumpfield(i, wanted)
         shoplist[wanted] += '}\n'
+    elif typ_str == 'std' and kind == CursorKind.NAMESPACE:
+        return
     else:
         for i in node.get_children():
-            dumpnode(i, wanted)
+            dumpnode(i, wanted, indent+1)
 
 def dumpfield(node, wanted):
     kind = node.kind
@@ -248,7 +250,7 @@ def main():
         for k,v in shoplist.items():
             if v == '':
                 goon = True
-                dumpnode(tu.cursor, k)
+                dumpnode(tu.cursor, k, 0)
     #if os.path.exists('gen') == False:
     #    os.mkdir('gen')
     f_h = file('encode_%s.h'%sys.argv[2], 'w')

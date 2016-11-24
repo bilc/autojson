@@ -23,7 +23,7 @@ Support Grammar
 Incompatible Grammar  
 ---
 -c-style array like 'int a[10];' or 'char * str; int strLen;'. It should be 'vector<int> a;' or 'string str;'.  
--container embed container, like vector<list<T>>  
+-container embed container, like vector< list< T>>  
 -the other containers, except list,vector and map  
 -user-defined template  
 
